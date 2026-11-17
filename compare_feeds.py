@@ -18,8 +18,22 @@ def print_stop_list(title, stops):
         print(stops.to_string(index=False))
 
 
+def report_duplicates(stops, feed):
+    """warn about duplicate stops"""
+    dupes = stops[stops["stop_id"].duplicated(keep=False)].sort_values("stop_id")
+    if dupes.empty:
+        print(f"{feed} feed: every stop_id is unique")
+    else:
+        count = dupes["stop_id"].nunique()
+        print(f"WARNING: {count} stop_id value(s) appear more than once in the {feed} feed")
+        print(dupes.to_string(index=False))
+
+
 old_stops = load(OLD_FEED, "stops.txt")
 new_stops = load(NEW_FEED, "stops.txt")
+
+report_duplicates(old_stops, "old")
+report_duplicates(new_stops, "new")
 
 old_ids = set(old_stops["stop_id"])
 new_ids = set(new_stops["stop_id"])
@@ -42,4 +56,4 @@ print_stop_list("New stops", added_stops)
 
 # TODO: find stops with changed names (same stop_id, different name), show old and new name
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
-# TODO: duplicate IDs
+# TODO: add header with agency name, warn if names differ in feeds
