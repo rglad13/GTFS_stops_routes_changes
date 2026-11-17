@@ -30,3 +30,4 @@ print("New stops:     ", len(added_ids))
 # TODO: list missing/new stop_id and stop_name in the output, not just counts
 # TODO: find stops with changed names (same stop_id, different name), show old and new name
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
+# TODO: duplicate IDs
