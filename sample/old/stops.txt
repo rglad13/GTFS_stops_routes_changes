@@ -1,0 +1,7 @@
+stop_id,stop_name,stop_lat,stop_lon
+S1,Central Station,47.750000,-3.360000
+S2,Market Square,47.751000,-3.362000
+S3,Park Gate,47.752000,-3.364000
+S4,Hospital,47.753000,-3.366000
+S5,Library,47.754000,-3.368000
+S6,Old Mill,47.755000,-3.370000
