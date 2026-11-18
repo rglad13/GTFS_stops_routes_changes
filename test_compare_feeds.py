@@ -1,6 +1,7 @@
 import pandas as pd
 
-from compare_feeds import distance_m, find_missing_and_new, find_moved_stops, find_renamed_stops, normalize_name
+from compare_feeds import distance_m, find_missing_and_new, find_moved_stops, find_renamed_stops, normalize_name, \
+    find_missing_and_new_routes
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -110,3 +111,33 @@ def test_stop_with_broken_coordinate_is_not_reported_as_moved():
     new = pd.DataFrame({"stop_id": ["A"], "stop_name": ["Hospital"], "stop_lat": ["oops"], "stop_lon": ["-3.366"]})
 
     assert find_moved_stops(old, new, threshold_m=30).empty
+
+
+def test_route_only_in_old_feed_is_missing_and_only_in_new_is_new():
+    old = pd.DataFrame({
+        "route_id": ["R1", "R2"],
+        "route_short_name": ["1", "2"],
+        "route_long_name": ["Namai - Parduotuvė", "Namai - Baras"],
+    })
+    new = pd.DataFrame({
+        "route_id": ["R1", "R3"],
+        "route_short_name": ["1", "3"],
+        "route_long_name": ["Namai - Parduotuvė", "Namai - Kapinės"],
+    })
+
+    missing, added = find_missing_and_new_routes(old, new)
+
+    assert list(missing["route_id"]) == ["R2"]
+    assert list(added["route_id"]) == ["R3"]
+
+
+def test_routes_work_when_a_feed_has_only_one_name_column():
+    old = pd.DataFrame({"route_id": ["R1", "R2"], "route_short_name": ["1", "2"]})  # no long names
+    new = pd.DataFrame(
+        {"route_id": ["R1", "R3"], "route_long_name": ["Namai - Parduotuvė", "Namai - Baras"]})  # no short names
+
+    missing, added = find_missing_and_new_routes(old, new)
+
+    assert list(missing["route_id"]) == ["R2"]
+    assert list(added["route_id"]) == ["R3"]
+    assert list(added.columns) == ["route_id", "route_short_name", "route_long_name"]
