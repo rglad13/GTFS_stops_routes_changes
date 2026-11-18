@@ -1,6 +1,6 @@
 import pandas as pd
 
-from compare_feeds import find_missing_and_new, find_renamed_stops
+from compare_feeds import find_missing_and_new, find_renamed_stops, normalize_name
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -41,3 +41,38 @@ def test_blank_names_only_count_when_one_side_has_a_name():
     renamed = find_renamed_stops(old, new)
 
     assert list(renamed["stop_id"]) == ["B", "C"]
+
+
+def test_normalize_name_ignores_case_and_extra_spaces_but_keeps_accents():
+    names = pd.Series(["  Šilo   Gatvė ", "ŠILO GATVĖ", "Silo Gatve", None], dtype="str")
+
+    assert list(normalize_name(names)) == ["šilo gatvė", "šilo gatvė", "silo gatve", ""]
+
+
+def test_same_letter_stored_two_ways_is_not_renamed():
+    old = pd.DataFrame({
+        "stop_id": ["A", "B"],
+        "stop_name": ["\u0160ilas", "\u0104žuolas"],  # Š and Ą as single characters
+    })
+    new = pd.DataFrame({
+        "stop_id": ["A", "B"],
+        "stop_name": ["S\u030cilas", "A\u0328žuolas"],  # S + caron (ˇ), A + ogonek (˛); look the same
+    })
+
+    assert find_renamed_stops(old, new).empty
+
+
+def test_case_change_is_not_renamed():
+    old = pd.DataFrame({"stop_id": ["A"], "stop_name": ["Park Gate"]})
+    new = pd.DataFrame({"stop_id": ["A"], "stop_name": ["PARK GATE"]})
+
+    assert find_renamed_stops(old, new).empty
+
+
+def test_accent_change_is_renamed():
+    old = pd.DataFrame({"stop_id": ["A"], "stop_name": ["Šilas"]})
+    new = pd.DataFrame({"stop_id": ["A"], "stop_name": ["Silas"]})
+
+    renamed = find_renamed_stops(old, new)
+
+    assert list(renamed["stop_id"]) == ["A"]

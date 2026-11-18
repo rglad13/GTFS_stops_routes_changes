@@ -1,7 +1,5 @@
 import pandas as pd
 
-
-
 OLD_FEED = "data/old"
 NEW_FEED = "data/new"
 
@@ -42,13 +40,24 @@ def find_missing_and_new(old_stops, new_stops):
     return missing_stops, added_stops
 
 
+def normalize_name(names):
+    """lowercase, trim and collapse spaces, same letters stored the same way, missing names become empty text"""
+    return (
+        names.fillna("")
+        .str.normalize("NFC")  # same letter always stored the same way
+        .str.lower()
+        .str.split()
+        .str.join(" ")
+    )
+
+
 def find_renamed_stops(old_stops, new_stops):
     """return stops in both feeds whose name changed, with old and new name"""
     old = old_stops[["stop_id", "stop_name"]]
     new = new_stops[["stop_id", "stop_name"]]
 
     pairs = old.merge(new, on="stop_id", suffixes=("_old", "_new"))
-    renamed = pairs[pairs["stop_name_old"].fillna("") != pairs["stop_name_new"].fillna("")]
+    renamed = pairs[normalize_name(pairs["stop_name_old"]) != normalize_name(pairs["stop_name_new"])]
     return renamed.sort_values("stop_id")
 
 
@@ -76,7 +85,10 @@ def main():
 if __name__ == "__main__":
     main()
 
-
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
 # TODO: report header with agency name; warn if agencies differ
-# TODO: NORMALIZE NAMES!
+# TODO: stops that moved
+# TODO: missing and new routes (route_id)
+# TODO: routes that lost all trips
+# TODO: output report (CSV?)
+# TODO: command line
