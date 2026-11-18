@@ -1,7 +1,7 @@
 import pandas as pd
 
 from compare_feeds import distance_m, find_missing_and_new, find_moved_stops, find_renamed_stops, normalize_name, \
-    find_missing_and_new_routes
+    find_missing_and_new_routes, find_trip_changes
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -141,3 +141,60 @@ def test_routes_work_when_a_feed_has_only_one_name_column():
     assert list(missing["route_id"]) == ["R2"]
     assert list(added["route_id"]) == ["R3"]
     assert list(added.columns) == ["route_id", "route_short_name", "route_long_name"]
+
+
+def make_routes(route_ids):
+    return pd.DataFrame({"route_id": route_ids, "route_short_name": route_ids})
+
+
+def make_trips(trips_per_route):
+    route_ids = []
+    for route_id, count in trips_per_route.items():
+        route_ids += [route_id] * count
+    return pd.DataFrame({"route_id": route_ids})
+
+
+def test_trip_change_of_25_percent_or_more_is_reported():
+    routes = make_routes(["DROP", "SMALL", "EXACT", "RISE"])
+    old_trips = make_trips({"DROP": 10, "SMALL": 10, "EXACT": 8, "RISE": 4})
+    new_trips = make_trips({"DROP": 5, "SMALL": 9, "EXACT": 6, "RISE": 6})  # -50%, -10%, -25%, +50%
+
+    lost_all, changed = find_trip_changes(routes, routes, old_trips, new_trips, threshold_pct=25)
+
+    assert lost_all.empty
+    assert list(changed["route_id"]) == ["DROP", "EXACT", "RISE"]
+    assert list(changed["change_pct"]) == [-50.0, -25.0, 50.0]
+
+
+def test_route_with_no_trips_left_is_lost_not_changed():
+    routes = make_routes(["A", "B"])
+    old_trips = make_trips({"A": 4, "B": 4})
+    new_trips = make_trips({"B": 4})  # A is still in routes.txt but has no trips
+
+    lost_all, changed = find_trip_changes(routes, routes, old_trips, new_trips, threshold_pct=25)
+
+    assert list(lost_all["route_id"]) == ["A"]
+    assert changed.empty
+
+
+def test_route_that_had_no_trips_and_now_has_some_is_reported_as_changed():
+    routes = make_routes(["A"])
+    old_trips = make_trips({})
+    new_trips = make_trips({"A": 3})
+
+    lost_all, changed = find_trip_changes(routes, routes, old_trips, new_trips, threshold_pct=25)
+
+    assert lost_all.empty
+    assert list(changed["route_id"]) == ["A"]
+
+
+def test_removed_route_is_not_counted_as_lost_trips():
+    old_routes = make_routes(["A", "B"])
+    new_routes = make_routes(["A"])  # B removed from routes.txt, reported as a missing route instead
+    old_trips = make_trips({"A": 4, "B": 4})
+    new_trips = make_trips({"A": 4})
+
+    lost_all, changed = find_trip_changes(old_routes, new_routes, old_trips, new_trips, threshold_pct=25)
+
+    assert lost_all.empty
+    assert changed.empty

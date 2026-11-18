@@ -4,6 +4,7 @@ import pandas as pd
 OLD_FEED = "data/old"
 NEW_FEED = "data/new"
 MOVE_THRESHOLD_M = 30
+TRIP_CHANGE_THRESHOLD_PCT = 25
 
 
 def load(feed_dir, filename):
@@ -66,6 +67,25 @@ def find_missing_and_new_routes(old_routes, new_routes):
     return missing_routes, added_routes
 
 
+def find_trip_changes(old_routes, new_routes, old_trips, new_trips, threshold_pct):
+    """return routes in both feeds that lost all trips, and routes whose trip count changed by threshold_pct or more"""
+    columns = ["route_id", "route_short_name", "route_long_name"]
+    routes = new_routes.reindex(columns=columns).fillna("")
+    routes = routes[routes["route_id"].isin(old_routes["route_id"])].copy()
+
+    old_counts = old_trips["route_id"].value_counts()
+    new_counts = new_trips["route_id"].value_counts()
+    routes["trips_old"] = routes["route_id"].map(old_counts).fillna(0).astype(int)
+    routes["trips_new"] = routes["route_id"].map(new_counts).fillna(0).astype(int)
+
+    lost_all = routes[(routes["trips_old"] > 0) & (routes["trips_new"] == 0)]
+
+    running = routes[routes["trips_new"] > 0].copy()
+    running["change_pct"] = ((running["trips_new"] - running["trips_old"]) / running["trips_old"] * 100).round(1)
+    changed = running[running["change_pct"].abs() >= threshold_pct]  # 0 old trips gives inf, so it's reported
+    return lost_all.sort_values("route_id"), changed.sort_values("route_id")
+
+
 def normalize_name(names):
     """lowercase, trim and collapse spaces; same letters stored the same way; blank names become empty text"""
     return (
@@ -118,6 +138,8 @@ def main():
     new_stops = load(NEW_FEED, "stops.txt")
     old_routes = load(OLD_FEED, "routes.txt")
     new_routes = load(NEW_FEED, "routes.txt")
+    old_trips = load(OLD_FEED, "trips.txt")
+    new_trips = load(NEW_FEED, "trips.txt")
 
     report_duplicates(old_stops, "stop_id", "old")
     report_duplicates(new_stops, "stop_id", "new")
@@ -128,6 +150,9 @@ def main():
     renamed_stops = find_renamed_stops(old_stops, new_stops)
     moved_stops = find_moved_stops(old_stops, new_stops, MOVE_THRESHOLD_M)
     missing_routes, added_routes = find_missing_and_new_routes(old_routes, new_routes)
+    lost_trips_routes, changed_trips_routes = find_trip_changes(
+        old_routes, new_routes, old_trips, new_trips, TRIP_CHANGE_THRESHOLD_PCT
+    )
 
     print("Old feed stops:", old_stops["stop_id"].nunique())
     print("New feed stops:", new_stops["stop_id"].nunique())
@@ -139,6 +164,8 @@ def main():
     print("New feed routes:", new_routes["route_id"].nunique())
     print("Missing routes: ", missing_routes["route_id"].nunique())
     print("New routes:     ", added_routes["route_id"].nunique())
+    print("Routes that lost all trips:", lost_trips_routes["route_id"].nunique())
+    print(f"Routes with trips changed {TRIP_CHANGE_THRESHOLD_PCT}% or more:", changed_trips_routes["route_id"].nunique())
 
     print_stop_list("Missing stops", missing_stops)
     print_stop_list("New stops", added_stops)
@@ -146,6 +173,8 @@ def main():
     print_stop_list(f"Stops moved more than {MOVE_THRESHOLD_M} m", moved_stops)
     print_route_list("Missing routes", missing_routes)
     print_route_list("New routes", added_routes)
+    print_route_list("Routes that lost all trips", lost_trips_routes)
+    print_route_list(f"Routes with trips changed {TRIP_CHANGE_THRESHOLD_PCT}% or more", changed_trips_routes)
 
 
 if __name__ == "__main__":
@@ -153,7 +182,6 @@ if __name__ == "__main__":
 
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
 # TODO: report header with agency name; warn if agencies differ
-# TODO: routes that lost all trips
 # TODO: output report (CSV?)
 # TODO: command line
-# TODO: data quality section? (broken coords, ???)
+# TODO: data quality section? (broken coords, orphan trips)
