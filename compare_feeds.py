@@ -1,7 +1,11 @@
+import numpy as np
 import pandas as pd
+
+
 
 OLD_FEED = "data/old"
 NEW_FEED = "data/new"
+MOVE_THRESHOLD_M = 30
 
 
 def load(feed_dir, filename):
@@ -41,7 +45,7 @@ def find_missing_and_new(old_stops, new_stops):
 
 
 def normalize_name(names):
-    """lowercase, trim and collapse spaces, same letters stored the same way, missing names become empty text"""
+    """lowercase, trim and collapse spaces; same letters stored the same way; blank names become empty text"""
     return (
         names.fillna("")
         .str.normalize("NFC")  # same letter always stored the same way
@@ -61,6 +65,32 @@ def find_renamed_stops(old_stops, new_stops):
     return renamed.sort_values("stop_id")
 
 
+def distance_m(lat1, lon1, lat2, lon2):
+    """approximate distance in metres between two points"""
+    metres_per_degree = 111_320
+    middle_lat = np.radians((lat1 + lat2) / 2)
+
+    north = (lat2 - lat1) * metres_per_degree
+    east = (lon2 - lon1) * metres_per_degree * np.cos(middle_lat)
+    return np.sqrt(north ** 2 + east ** 2)
+
+
+def find_moved_stops(old_stops, new_stops, threshold_m):
+    """return stops in both feeds that moved more than threshold_m metres"""
+    old = old_stops[["stop_id", "stop_lat", "stop_lon"]]
+    new = new_stops[["stop_id", "stop_name", "stop_lat", "stop_lon"]]
+
+    pairs = old.merge(new, on="stop_id", suffixes=("_old", "_new"))
+    for column in ["stop_lat_old", "stop_lon_old", "stop_lat_new", "stop_lon_new"]:
+        pairs[column] = pd.to_numeric(pairs[column], errors="coerce")  # broken coordinate - NaN
+
+    pairs["moved_m"] = distance_m(
+        pairs["stop_lat_old"], pairs["stop_lon_old"], pairs["stop_lat_new"], pairs["stop_lon_new"]
+    ).round(1)
+    moved = pairs[pairs["moved_m"] > threshold_m]  # NaN is never > threshold, so not reported
+    return moved[["stop_id", "stop_name", "moved_m"]].sort_values("stop_id")
+
+
 def main():
     old_stops = load(OLD_FEED, "stops.txt")
     new_stops = load(NEW_FEED, "stops.txt")
@@ -70,25 +100,29 @@ def main():
 
     missing_stops, added_stops = find_missing_and_new(old_stops, new_stops)
     renamed_stops = find_renamed_stops(old_stops, new_stops)
+    moved_stops = find_moved_stops(old_stops, new_stops, MOVE_THRESHOLD_M)
 
     print("Old feed stops:", old_stops["stop_id"].nunique())
     print("New feed stops:", new_stops["stop_id"].nunique())
     print("Missing stops: ", missing_stops["stop_id"].nunique())
     print("New stops:     ", added_stops["stop_id"].nunique())
     print("Renamed stops: ", renamed_stops["stop_id"].nunique())
+    print("Moved stops:   ", moved_stops["stop_id"].nunique())
 
     print_stop_list("Missing stops", missing_stops)
     print_stop_list("New stops", added_stops)
     print_stop_list("Renamed stops", renamed_stops)
+    print_stop_list(f"Stops moved more than {MOVE_THRESHOLD_M} m", moved_stops)
 
 
 if __name__ == "__main__":
     main()
 
+
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
 # TODO: report header with agency name; warn if agencies differ
-# TODO: stops that moved
 # TODO: missing and new routes (route_id)
 # TODO: routes that lost all trips
 # TODO: output report (CSV?)
 # TODO: command line
+# TODO: data quality section? (broken coords, duplicate problem ???)

@@ -1,6 +1,6 @@
 import pandas as pd
 
-from compare_feeds import find_missing_and_new, find_renamed_stops, normalize_name
+from compare_feeds import distance_m, find_missing_and_new, find_moved_stops, find_renamed_stops, normalize_name
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -76,3 +76,37 @@ def test_accent_change_is_renamed():
     renamed = find_renamed_stops(old, new)
 
     assert list(renamed["stop_id"]) == ["A"]
+
+
+def test_distance_of_one_thousandth_degree_north_is_about_111_m():
+    lat1, lon1 = pd.Series([47.75]), pd.Series([-3.36])
+    lat2, lon2 = pd.Series([47.751]), pd.Series([-3.36])
+
+    assert round(distance_m(lat1, lon1, lat2, lon2)[0]) == 111
+
+
+def test_stop_moved_50_m_is_reported_and_5_m_is_not():
+    old = pd.DataFrame({
+        "stop_id": ["A", "B"],
+        "stop_name": ["Hospital", "Library"],
+        "stop_lat": ["47.753000", "47.754000"],
+        "stop_lon": ["-3.366000", "-3.368000"],
+    })
+    new = pd.DataFrame({
+        "stop_id": ["A", "B"],
+        "stop_name": ["Hospital", "Library"],
+        "stop_lat": ["47.753450", "47.754045"],  # A about 50 m north, B about 5 m north
+        "stop_lon": ["-3.366000", "-3.368000"],
+    })
+
+    moved = find_moved_stops(old, new, threshold_m=30)
+
+    assert list(moved["stop_id"]) == ["A"]
+    assert 49 < moved["moved_m"].iloc[0] < 51
+
+
+def test_stop_with_broken_coordinate_is_not_reported_as_moved():
+    old = pd.DataFrame({"stop_id": ["A"], "stop_name": ["Hospital"], "stop_lat": ["47.753"], "stop_lon": ["-3.366"]})
+    new = pd.DataFrame({"stop_id": ["A"], "stop_name": ["Hospital"], "stop_lat": ["oops"], "stop_lon": ["-3.366"]})
+
+    assert find_moved_stops(old, new, threshold_m=30).empty
