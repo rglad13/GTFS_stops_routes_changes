@@ -13,7 +13,7 @@ def load(feed_dir, filename):
 
 def print_stop_list(title, stops):
     """print stop ID and name"""
-    print(f"\n{title} ({len(stops)})")
+    print(f"\n{title} ({stops['stop_id'].nunique()})")
     if not stops.empty:
         print(stops.to_string(index=False))
 
@@ -29,31 +29,41 @@ def report_duplicates(stops, feed):
         print(dupes.to_string(index=False))
 
 
-old_stops = load(OLD_FEED, "stops.txt")
-new_stops = load(NEW_FEED, "stops.txt")
+def find_missing_and_new(old_stops, new_stops):
+    """return stops only in the old feed (missing) and stops only in the new feed (new)"""
+    old_ids = set(old_stops["stop_id"])
+    new_ids = set(new_stops["stop_id"])
 
-report_duplicates(old_stops, "old")
-report_duplicates(new_stops, "new")
+    missing_ids = old_ids - new_ids
+    added_ids = new_ids - old_ids
 
-old_ids = set(old_stops["stop_id"])
-new_ids = set(new_stops["stop_id"])
+    missing_stops = old_stops[old_stops["stop_id"].isin(missing_ids)][["stop_id", "stop_name"]].sort_values("stop_id")
+    added_stops = new_stops[new_stops["stop_id"].isin(added_ids)][["stop_id", "stop_name"]].sort_values("stop_id")
+    return missing_stops, added_stops
 
-missing_ids = old_ids - new_ids
-added_ids = new_ids - old_ids
-common_ids = old_ids & new_ids # needed for next step
 
-missing_stops = old_stops[old_stops["stop_id"].isin(missing_ids)][["stop_id", "stop_name"]].sort_values("stop_id")
-added_stops = new_stops[new_stops["stop_id"].isin(added_ids)][["stop_id", "stop_name"]].sort_values("stop_id")
+def main():
+    old_stops = load(OLD_FEED, "stops.txt")
+    new_stops = load(NEW_FEED, "stops.txt")
 
-print("Old feed stops:", len(old_ids))
-print("New feed stops:", len(new_ids))
-print("Missing stops: ", len(missing_ids))
-print("New stops:     ", len(added_ids))
+    report_duplicates(old_stops, "old")
+    report_duplicates(new_stops, "new")
 
-print_stop_list("Missing stops", missing_stops)
-print_stop_list("New stops", added_stops)
+    missing_stops, added_stops = find_missing_and_new(old_stops, new_stops)
+
+    print("Old feed stops:", old_stops["stop_id"].nunique())
+    print("New feed stops:", new_stops["stop_id"].nunique())
+    print("Missing stops: ", missing_stops["stop_id"].nunique())
+    print("New stops:     ", added_stops["stop_id"].nunique())
+
+    print_stop_list("Missing stops", missing_stops)
+    print_stop_list("New stops", added_stops)
+
+
+if __name__ == "__main__":
+    main()
 
 
 # TODO: find stops with changed names (same stop_id, different name), show old and new name
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
-# TODO: add header with agency name, warn if names differ in feeds
+# TODO: report header with agency name; warn if agencies differ
