@@ -1,6 +1,6 @@
 import pandas as pd
 
-from compare_feeds import find_missing_and_new
+from compare_feeds import find_missing_and_new, find_renamed_stops
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -21,3 +21,14 @@ def test_stop_only_in_new_feed_is_new():
 
     assert missing.empty
     assert list(added["stop_id"]) == ["C"]
+
+
+def test_stop_with_different_name_is_renamed():
+    old = pd.DataFrame({"stop_id": ["A", "B"], "stop_name": ["Alpha", "Beta"]})
+    new = pd.DataFrame({"stop_id": ["A", "B"], "stop_name": ["Alpha", "Beta North"]})
+
+    renamed = find_renamed_stops(old, new)
+
+    assert list(renamed["stop_id"]) == ["B"]
+    assert list(renamed["stop_name_old"]) == ["Beta"]
+    assert list(renamed["stop_name_new"]) == ["Beta North"]

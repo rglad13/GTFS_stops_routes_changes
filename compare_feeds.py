@@ -42,6 +42,16 @@ def find_missing_and_new(old_stops, new_stops):
     return missing_stops, added_stops
 
 
+def find_renamed_stops(old_stops, new_stops):
+    """return stops in both feeds whose name changed, with old and new name"""
+    old = old_stops[["stop_id", "stop_name"]]
+    new = new_stops[["stop_id", "stop_name"]]
+
+    pairs = old.merge(new, on="stop_id", suffixes=("_old", "_new"))
+    renamed = pairs[pairs["stop_name_old"] != pairs["stop_name_new"]]
+    return renamed.sort_values("stop_id")
+
+
 def main():
     old_stops = load(OLD_FEED, "stops.txt")
     new_stops = load(NEW_FEED, "stops.txt")
@@ -50,20 +60,24 @@ def main():
     report_duplicates(new_stops, "new")
 
     missing_stops, added_stops = find_missing_and_new(old_stops, new_stops)
+    renamed_stops = find_renamed_stops(old_stops, new_stops)
 
     print("Old feed stops:", old_stops["stop_id"].nunique())
     print("New feed stops:", new_stops["stop_id"].nunique())
     print("Missing stops: ", missing_stops["stop_id"].nunique())
     print("New stops:     ", added_stops["stop_id"].nunique())
+    print("Renamed stops: ", renamed_stops["stop_id"].nunique())
 
     print_stop_list("Missing stops", missing_stops)
     print_stop_list("New stops", added_stops)
+    print_stop_list("Renamed stops", renamed_stops)
 
 
 if __name__ == "__main__":
     main()
 
 
-# TODO: find stops with changed names (same stop_id, different name), show old and new name
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
 # TODO: report header with agency name; warn if agencies differ
+# TODO: NORMALIZE NAMES!
+# TODO: handle empty stop names
