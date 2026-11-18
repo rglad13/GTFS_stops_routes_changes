@@ -32,3 +32,12 @@ def test_stop_with_different_name_is_renamed():
     assert list(renamed["stop_id"]) == ["B"]
     assert list(renamed["stop_name_old"]) == ["Beta"]
     assert list(renamed["stop_name_new"]) == ["Beta North"]
+
+
+def test_blank_names_only_count_when_one_side_has_a_name():
+    old = pd.DataFrame({"stop_id": ["A", "B", "C"], "stop_name": [None, None, "Gamma"]}, dtype="str")
+    new = pd.DataFrame({"stop_id": ["A", "B", "C"], "stop_name": [None, "Beta", None]}, dtype="str")
+
+    renamed = find_renamed_stops(old, new)
+
+    assert list(renamed["stop_id"]) == ["B", "C"]

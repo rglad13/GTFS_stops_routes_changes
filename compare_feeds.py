@@ -48,7 +48,7 @@ def find_renamed_stops(old_stops, new_stops):
     new = new_stops[["stop_id", "stop_name"]]
 
     pairs = old.merge(new, on="stop_id", suffixes=("_old", "_new"))
-    renamed = pairs[pairs["stop_name_old"] != pairs["stop_name_new"]]
+    renamed = pairs[pairs["stop_name_old"].fillna("") != pairs["stop_name_new"].fillna("")]
     return renamed.sort_values("stop_id")
 
 
@@ -80,4 +80,3 @@ if __name__ == "__main__":
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
 # TODO: report header with agency name; warn if agencies differ
 # TODO: NORMALIZE NAMES!
-# TODO: handle empty stop names
