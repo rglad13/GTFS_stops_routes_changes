@@ -1,7 +1,7 @@
 import pandas as pd
 
 from compare_feeds import distance_m, find_missing_and_new, find_moved_stops, find_renamed_stops, normalize_name, \
-    find_missing_and_new_routes, find_trip_changes
+    find_missing_and_new_routes, find_trip_changes, for_display, format_header, report_duplicates
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -198,3 +198,30 @@ def test_removed_route_is_not_counted_as_lost_trips():
 
     assert lost_all.empty
     assert changed.empty
+
+
+def test_for_display_shows_new_service_and_empty_blanks():
+    table = pd.DataFrame({"route_id": ["A", "B"], "route_long_name": [None, "Port"], "change_pct": [float("inf"), -50.0]})
+
+    shown = for_display(table)
+
+    assert list(shown["change_pct"]) == ["new service", -50.0]
+    assert list(shown["route_long_name"]) == ["", "Port"]
+
+
+def test_header_warns_when_agencies_differ():
+    old = pd.DataFrame({"agency_name": ["Grybas"]})
+    same = pd.DataFrame({"agency_name": ["Grybas"]})
+    other = pd.DataFrame({"agency_name": ["Baravykas"]})
+
+    assert "WARNING" not in format_header(old, same)
+    assert "WARNING" in format_header(old, other)
+
+
+def test_report_duplicates_names_the_repeated_id():
+    stops = pd.DataFrame({"stop_id": ["A", "B", "B"], "stop_name": ["Alpha", "Beta", "Beta"]})
+
+    text = report_duplicates(stops, "stop_id", "new")
+
+    assert "WARNING: 1 stop_id value(s) appear more than once in the new feed" in text
+    assert text.count("Beta") == 2

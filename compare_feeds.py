@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -5,6 +7,7 @@ OLD_FEED = "data/old"
 NEW_FEED = "data/new"
 MOVE_THRESHOLD_M = 30
 TRIP_CHANGE_THRESHOLD_PCT = 25
+REPORT_FILE = "output/report.txt"
 
 
 def load(feed_dir, filename):
@@ -12,29 +15,43 @@ def load(feed_dir, filename):
     return pd.read_csv(f"{feed_dir}/{filename}", dtype=str, encoding="utf-8-sig")
 
 
-def print_stop_list(title, stops):
-    """print stop ID and name"""
-    print(f"\n{title} ({stops['stop_id'].nunique()})")
-    if not stops.empty:
-        print(stops.to_string(index=False))
+def for_display(table):
+    """copy of a table ready to show"""
+    shown = table.copy()
+    if "change_pct" in shown.columns:
+        shown["change_pct"] = shown["change_pct"].astype(object).replace(np.inf, "new service")
+    return shown.fillna("")
 
 
-def print_route_list(title, routes):
-    """print route ID, short name and long name"""
-    print(f"\n{title} ({routes['route_id'].nunique()})")
-    if not routes.empty:
-        print(routes.to_string(index=False))
+def format_section(title, table, id_column):
+    """heading with the number of IDs, then the table"""
+    text = f"\n{title} ({table[id_column].nunique()})\n"
+    if not table.empty:
+        text += for_display(table).to_string(index=False) + "\n"
+    return text
+
+
+def format_header(old_agency, new_agency):
+    """report title, which feeds were compared, warning if the agencies differ"""
+    old_names = ", ".join(sorted(old_agency["agency_name"].dropna()))
+    new_names = ", ".join(sorted(new_agency["agency_name"].dropna()))
+
+    text = "GTFS FEED COMPARISON\n"
+    text += f"Old feed: {OLD_FEED} ({old_names})\n"
+    text += f"New feed: {NEW_FEED} ({new_names})\n"
+    if old_names != new_names:
+        text += "WARNING: The feeds have different agencies, check if files are correct!\n"
+    return text
 
 
 def report_duplicates(table, id_column, feed):
-    """warn about IDs that appear more than once"""
+    """text warning about IDs that appear more than once"""
     dupes = table[table[id_column].duplicated(keep=False)].sort_values(id_column)
     if dupes.empty:
-        print(f"{feed} feed: every {id_column} is unique")
-    else:
-        count = dupes[id_column].nunique()
-        print(f"WARNING: {count} {id_column} value(s) appear more than once in the {feed} feed")
-        print(dupes.to_string(index=False))
+        return f"{feed} feed: every {id_column} is unique\n"
+    count = dupes[id_column].nunique()
+    text = f"WARNING: {count} {id_column} value(s) appear more than once in the {feed} feed\n"
+    return text + for_display(dupes).to_string(index=False) + "\n"
 
 
 def find_missing_and_new(old_stops, new_stops):
@@ -134,17 +151,14 @@ def find_moved_stops(old_stops, new_stops, threshold_m):
 
 
 def main():
+    old_agency = load(OLD_FEED, "agency.txt")
+    new_agency = load(NEW_FEED, "agency.txt")
     old_stops = load(OLD_FEED, "stops.txt")
     new_stops = load(NEW_FEED, "stops.txt")
     old_routes = load(OLD_FEED, "routes.txt")
     new_routes = load(NEW_FEED, "routes.txt")
     old_trips = load(OLD_FEED, "trips.txt")
     new_trips = load(NEW_FEED, "trips.txt")
-
-    report_duplicates(old_stops, "stop_id", "old")
-    report_duplicates(new_stops, "stop_id", "new")
-    report_duplicates(old_routes, "route_id", "old")
-    report_duplicates(new_routes, "route_id", "new")
 
     missing_stops, added_stops = find_missing_and_new(old_stops, new_stops)
     renamed_stops = find_renamed_stops(old_stops, new_stops)
@@ -154,34 +168,56 @@ def main():
         old_routes, new_routes, old_trips, new_trips, TRIP_CHANGE_THRESHOLD_PCT
     )
 
-    print("Old feed stops:", old_stops["stop_id"].nunique())
-    print("New feed stops:", new_stops["stop_id"].nunique())
-    print("Missing stops: ", missing_stops["stop_id"].nunique())
-    print("New stops:     ", added_stops["stop_id"].nunique())
-    print("Renamed stops: ", renamed_stops["stop_id"].nunique())
-    print("Moved stops:   ", moved_stops["stop_id"].nunique())
-    print("Old feed routes:", old_routes["route_id"].nunique())
-    print("New feed routes:", new_routes["route_id"].nunique())
-    print("Missing routes: ", missing_routes["route_id"].nunique())
-    print("New routes:     ", added_routes["route_id"].nunique())
-    print("Routes that lost all trips:", lost_trips_routes["route_id"].nunique())
-    print(f"Routes with trips changed {TRIP_CHANGE_THRESHOLD_PCT}% or more:", changed_trips_routes["route_id"].nunique())
+    report = format_header(old_agency, new_agency)
 
-    print_stop_list("Missing stops", missing_stops)
-    print_stop_list("New stops", added_stops)
-    print_stop_list("Renamed stops", renamed_stops)
-    print_stop_list(f"Stops moved more than {MOVE_THRESHOLD_M} m", moved_stops)
-    print_route_list("Missing routes", missing_routes)
-    print_route_list("New routes", added_routes)
-    print_route_list("Routes that lost all trips", lost_trips_routes)
-    print_route_list(f"Routes with trips changed {TRIP_CHANGE_THRESHOLD_PCT}% or more", changed_trips_routes)
+    report += "\nINPUT CHECKS\n"
+    report += report_duplicates(old_stops, "stop_id", "old")
+    report += report_duplicates(new_stops, "stop_id", "new")
+    report += report_duplicates(old_routes, "route_id", "old")
+    report += report_duplicates(new_routes, "route_id", "new")
+
+    summary = [
+        ("Stops in old feed", old_stops["stop_id"].nunique()),
+        ("Stops in new feed", new_stops["stop_id"].nunique()),
+        ("Missing stops", missing_stops["stop_id"].nunique()),
+        ("New stops", added_stops["stop_id"].nunique()),
+        ("Renamed stops", renamed_stops["stop_id"].nunique()),
+        (f"Stops moved more than {MOVE_THRESHOLD_M} m", moved_stops["stop_id"].nunique()),
+        ("Routes in old feed", old_routes["route_id"].nunique()),
+        ("Routes in new feed", new_routes["route_id"].nunique()),
+        ("Missing routes", missing_routes["route_id"].nunique()),
+        ("New routes", added_routes["route_id"].nunique()),
+        ("Routes that lost all trips", lost_trips_routes["route_id"].nunique()),
+        (f"Routes with trips changed {TRIP_CHANGE_THRESHOLD_PCT}% or more", changed_trips_routes["route_id"].nunique()),
+    ]
+    report += "\nSUMMARY\n"
+    for label, count in summary:
+        report += f"{label:<42}{count}\n"
+
+    report += "\nDETAILS\n"
+    report += format_section("Missing stops", missing_stops, "stop_id")
+    report += format_section("New stops", added_stops, "stop_id")
+    report += format_section("Renamed stops", renamed_stops, "stop_id")
+    report += format_section(f"Stops moved more than {MOVE_THRESHOLD_M} m", moved_stops, "stop_id")
+    report += format_section("Missing routes", missing_routes, "route_id")
+    report += format_section("New routes", added_routes, "route_id")
+    report += format_section("Routes that lost all trips", lost_trips_routes, "route_id")
+    report += format_section(
+        f"Routes with trips changed {TRIP_CHANGE_THRESHOLD_PCT}% or more", changed_trips_routes, "route_id"
+    )
+
+    print(report)
+    os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
+    with open(REPORT_FILE, "w", encoding="utf-8") as file:
+        file.write(report)
+    print(f"Report saved to {REPORT_FILE}")
 
 
 if __name__ == "__main__":
     main()
 
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
-# TODO: report header with agency name; warn if agencies differ
-# TODO: output report (CSV?)
+# TODO: output report CSV
 # TODO: command line
 # TODO: data quality section? (broken coords, orphan trips)
+# TODO: limitations for README: different service time length
