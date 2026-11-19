@@ -307,5 +307,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-# TODO: for README: ??? flag missing+new pairs with the same name as possible ID changes
-# TODO: limitations for README: different service time length, csv for changes only, txt contains data quality
