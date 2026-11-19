@@ -1,7 +1,8 @@
 import pandas as pd
 
 from compare_feeds import distance_m, find_missing_and_new, find_moved_stops, find_renamed_stops, normalize_name, \
-    find_missing_and_new_routes, find_trip_changes, for_display, format_header, report_duplicates
+    find_missing_and_new_routes, find_trip_changes, for_display, format_header, report_duplicates, \
+    csv_rows, route_name
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -225,3 +226,24 @@ def test_report_duplicates_names_the_repeated_id():
 
     assert "WARNING: 1 stop_id value(s) appear more than once in the new feed" in text
     assert text.count("Beta") == 2
+
+
+def test_csv_rows_have_the_same_columns_for_every_category():
+    stops = pd.DataFrame({"stop_id": ["A"], "stop_name": ["Alpha"]})
+
+    rows = csv_rows("missing stop", stops["stop_id"], stops["stop_name"])
+
+    assert list(rows.columns) == ["category", "id", "name", "old_value", "new_value", "change"]
+    assert rows.iloc[0].tolist() == ["missing stop", "A", "Alpha", "", "", ""]
+
+
+def test_csv_rows_for_an_empty_table_give_no_rows():
+    stops = pd.DataFrame({"stop_id": [], "stop_name": []})
+
+    assert csv_rows("missing stop", stops["stop_id"], stops["stop_name"]).empty
+
+
+def test_route_name_joins_short_and_long_and_handles_blanks():
+    routes = pd.DataFrame({"route_short_name": ["122", "", "T4"], "route_long_name": ["Gare - Port", "Beach Loop", ""]})
+
+    assert list(route_name(routes)) == ["122 Gare - Port", "Beach Loop", "T4"]

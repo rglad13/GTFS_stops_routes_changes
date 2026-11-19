@@ -8,6 +8,7 @@ NEW_FEED = "data/new"
 MOVE_THRESHOLD_M = 30
 TRIP_CHANGE_THRESHOLD_PCT = 25
 REPORT_FILE = "output/report.txt"
+CSV_FILE = "output/report.csv"
 
 
 def load(feed_dir, filename):
@@ -52,6 +53,23 @@ def report_duplicates(table, id_column, feed):
     count = dupes[id_column].nunique()
     text = f"WARNING: {count} {id_column} value(s) appear more than once in the {feed} feed\n"
     return text + for_display(dupes).to_string(index=False) + "\n"
+
+
+def csv_rows(category, ids, names, old_value="", new_value="", change=""):
+    """rows for the CSV report"""
+    return pd.DataFrame({
+        "category": category,
+        "id": ids,
+        "name": names,
+        "old_value": old_value,
+        "new_value": new_value,
+        "change": change,
+    })
+
+
+def route_name(routes):
+    """short and long name together"""
+    return (routes["route_short_name"] + " " + routes["route_long_name"]).str.strip()
 
 
 def find_missing_and_new(old_stops, new_stops):
@@ -206,18 +224,35 @@ def main():
         f"Routes with trips changed {TRIP_CHANGE_THRESHOLD_PCT}% or more", changed_trips_routes, "route_id"
     )
 
+    pct = changed_trips_routes["change_pct"]
+    csv_table = pd.concat([
+        csv_rows("missing stop", missing_stops["stop_id"], missing_stops["stop_name"]),
+        csv_rows("new stop", added_stops["stop_id"], added_stops["stop_name"]),
+        csv_rows("renamed stop", renamed_stops["stop_id"], renamed_stops["stop_name_new"],
+                 renamed_stops["stop_name_old"], renamed_stops["stop_name_new"]),
+        csv_rows("moved stop", moved_stops["stop_id"], moved_stops["stop_name"],
+                 change=moved_stops["moved_m"].astype(str) + " m"),
+        csv_rows("missing route", missing_routes["route_id"], route_name(missing_routes)),
+        csv_rows("new route", added_routes["route_id"], route_name(added_routes)),
+        csv_rows("route lost all trips", lost_trips_routes["route_id"], route_name(lost_trips_routes),
+                 lost_trips_routes["trips_old"], lost_trips_routes["trips_new"], "-100%"),
+        csv_rows("route trips changed", changed_trips_routes["route_id"], route_name(changed_trips_routes),
+                 changed_trips_routes["trips_old"], changed_trips_routes["trips_new"],
+                 (pct.astype(str) + "%").where(~np.isinf(pct), "new service")),
+    ])
+
     print(report)
     os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
     with open(REPORT_FILE, "w", encoding="utf-8") as file:
         file.write(report)
-    print(f"Report saved to {REPORT_FILE}")
+    csv_table.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")  # -sig so Excel shows accents correctly
+    print(f"Report saved to {REPORT_FILE} and {CSV_FILE}")
 
 
 if __name__ == "__main__":
     main()
 
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
-# TODO: output report CSV
 # TODO: command line
 # TODO: data quality section? (broken coords, orphan trips)
 # TODO: limitations for README: different service time length
