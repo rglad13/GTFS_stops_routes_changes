@@ -72,6 +72,32 @@ def route_name(routes):
     return (routes["route_short_name"] + " " + routes["route_long_name"]).str.strip()
 
 
+def find_bad_coordinates(stops):
+    """return stops with bad coords"""
+    columns = ["stop_id", "stop_name", "stop_lat", "stop_lon", "location_type"]
+    table = stops.reindex(columns=columns)
+    needs_coordinates = ~table["location_type"].isin(["3", "4"])  # generic nodes and boarding areas may have none
+
+    lat = pd.to_numeric(table["stop_lat"], errors="coerce")
+    lon = pd.to_numeric(table["stop_lon"], errors="coerce")
+
+    problem = pd.Series("", index=table.index)
+    problem.loc[lat.isna() | lon.isna()] = "missing or not a number"
+    problem.loc[(lat.abs() > 90) | (lon.abs() > 180)] = "out of range"
+    problem.loc[(lat == 0) & (lon == 0)] = "0, 0 placeholder"
+
+    table["problem"] = problem
+    bad = table[needs_coordinates & (problem != "")]
+    return bad[["stop_id", "stop_name", "stop_lat", "stop_lon", "problem"]].sort_values("stop_id")
+
+
+def find_orphan_trips(trips, routes):
+    """return route_ids used in trips but missing in routes"""
+    orphans = trips[~trips["route_id"].isin(routes["route_id"])]
+    counts = orphans["route_id"].value_counts().reset_index(name="trips")
+    return counts.sort_values("route_id")
+
+
 def find_missing_and_new(old_stops, new_stops):
     """return stops only in the old feed (missing) and stops only in the new feed (new)"""
     old_ids = set(old_stops["stop_id"])
@@ -188,11 +214,19 @@ def main():
 
     report = format_header(old_agency, new_agency)
 
-    report += "\nINPUT CHECKS\n"
+    report += "\nDATA QUALITY\n"
     report += report_duplicates(old_stops, "stop_id", "old")
     report += report_duplicates(new_stops, "stop_id", "new")
     report += report_duplicates(old_routes, "route_id", "old")
     report += report_duplicates(new_routes, "route_id", "new")
+    report += format_section("Stops with unusable coordinates (old feed)", find_bad_coordinates(old_stops), "stop_id")
+    report += format_section("Stops with unusable coordinates (new feed)", find_bad_coordinates(new_stops), "stop_id")
+    report += format_section(
+        "route_id in trips.txt but not in routes.txt (old feed)", find_orphan_trips(old_trips, old_routes), "route_id"
+    )
+    report += format_section(
+        "route_id in trips.txt but not in routes.txt (new feed)", find_orphan_trips(new_trips, new_routes), "route_id"
+    )
 
     summary = [
         ("Stops in old feed", old_stops["stop_id"].nunique()),
@@ -254,5 +288,4 @@ if __name__ == "__main__":
 
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
 # TODO: command line
-# TODO: data quality section? (broken coords, orphan trips)
-# TODO: limitations for README: different service time length
+# TODO: limitations for README: different service time length, csv for changes only, txt contains data quality

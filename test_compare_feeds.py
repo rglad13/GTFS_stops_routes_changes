@@ -2,7 +2,7 @@ import pandas as pd
 
 from compare_feeds import distance_m, find_missing_and_new, find_moved_stops, find_renamed_stops, normalize_name, \
     find_missing_and_new_routes, find_trip_changes, for_display, format_header, report_duplicates, \
-    csv_rows, route_name
+    csv_rows, route_name, find_bad_coordinates, find_orphan_trips
 
 
 def test_stop_only_in_old_feed_is_missing():
@@ -247,3 +247,39 @@ def test_route_name_joins_short_and_long_and_handles_blanks():
     routes = pd.DataFrame({"route_short_name": ["122", "", "T4"], "route_long_name": ["Gare - Port", "Beach Loop", ""]})
 
     assert list(route_name(routes)) == ["122 Gare - Port", "Beach Loop", "T4"]
+
+
+def test_bad_coordinates_are_found_with_the_reason():
+    stops = pd.DataFrame({
+        "stop_id": ["OK", "EMPTY", "TEXT", "FAR", "ZERO"],
+        "stop_name": ["Fine", "Empty", "Text", "Far", "Zero"],
+        "stop_lat": ["47.75", None, "oops", "95.0", "0"],
+        "stop_lon": ["-3.36", "-3.36", "-3.36", "-3.36", "0"],
+    }, dtype="str")
+
+    bad = find_bad_coordinates(stops)
+
+    assert list(bad["stop_id"]) == ["EMPTY", "FAR", "TEXT", "ZERO"]
+    assert list(bad["problem"]) == ["missing or not a number", "out of range", "missing or not a number", "0, 0 placeholder"]
+
+
+def test_stops_that_may_have_no_coordinates_are_not_flagged():
+    stops = pd.DataFrame({
+        "stop_id": ["NODE", "AREA", "STOP"],
+        "stop_name": ["Node", "Area", "Stop"],
+        "stop_lat": [None, None, None],
+        "stop_lon": [None, None, None],
+        "location_type": ["3", "4", "0"],  # generic node, boarding area, normal stop
+    }, dtype="str")
+
+    assert list(find_bad_coordinates(stops)["stop_id"]) == ["STOP"]
+
+
+def test_trips_with_unknown_route_are_counted_per_route():
+    routes = make_routes(["A"])
+    trips = make_trips({"A": 2, "NIEKAS": 3})
+
+    orphans = find_orphan_trips(trips, routes)
+
+    assert list(orphans["route_id"]) == ["NIEKAS"]
+    assert list(orphans["trips"]) == [3]
