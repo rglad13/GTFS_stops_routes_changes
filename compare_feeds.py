@@ -55,7 +55,10 @@ def report_duplicates(table, id_column, feed):
     if dupes.empty:
         return f"{feed} feed: every {id_column} is unique\n"
     count = dupes[id_column].nunique()
-    text = f"WARNING: {count} {id_column} value(s) appear more than once in the {feed} feed\n"
+    text = (
+        f"WARNING: {count} {id_column} value(s) appear more than once in the {feed} feed "
+        "(results for these IDs may be unreliable)\n"
+    )
     return text + for_display(dupes).to_string(index=False) + "\n"
 
 
@@ -304,5 +307,5 @@ def main():
 if __name__ == "__main__":
     main()
 
-# TODO: ??? flag missing+new pairs with the same name as possible ID changes
+# TODO: for README: ??? flag missing+new pairs with the same name as possible ID changes
 # TODO: limitations for README: different service time length, csv for changes only, txt contains data quality
