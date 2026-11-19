@@ -1,7 +1,11 @@
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+HERE = Path(__file__).parent
 
 OLD_FEED = "data/old"
 NEW_FEED = "data/new"
@@ -32,14 +36,14 @@ def format_section(title, table, id_column):
     return text
 
 
-def format_header(old_agency, new_agency):
+def format_header(old_agency, new_agency, old_feed, new_feed):
     """report title, which feeds were compared, warning if the agencies differ"""
     old_names = ", ".join(sorted(old_agency["agency_name"].dropna()))
     new_names = ", ".join(sorted(new_agency["agency_name"].dropna()))
 
     text = "GTFS FEED COMPARISON\n"
-    text += f"Old feed: {OLD_FEED} ({old_names})\n"
-    text += f"New feed: {NEW_FEED} ({new_names})\n"
+    text += f"Old feed: {old_feed} ({old_names})\n"
+    text += f"New feed: {new_feed} ({new_names})\n"
     if old_names != new_names:
         text += "WARNING: The feeds have different agencies, check if files are correct!\n"
     return text
@@ -194,15 +198,29 @@ def find_moved_stops(old_stops, new_stops, threshold_m):
     return moved[["stop_id", "stop_name", "moved_m"]].sort_values("stop_id")
 
 
+def feed_folders():
+    """old and new feed folders: from the command line if given, otherwise the settings at the top"""
+    if len(sys.argv) == 3:
+        return sys.argv[1], sys.argv[2]
+    if len(sys.argv) == 1:
+        return HERE / OLD_FEED, HERE / NEW_FEED
+    print("Usage: python compare_feeds.py [OLD_FEED_FOLDER NEW_FEED_FOLDER]")
+    sys.exit(1)
+
+
 def main():
-    old_agency = load(OLD_FEED, "agency.txt")
-    new_agency = load(NEW_FEED, "agency.txt")
-    old_stops = load(OLD_FEED, "stops.txt")
-    new_stops = load(NEW_FEED, "stops.txt")
-    old_routes = load(OLD_FEED, "routes.txt")
-    new_routes = load(NEW_FEED, "routes.txt")
-    old_trips = load(OLD_FEED, "trips.txt")
-    new_trips = load(NEW_FEED, "trips.txt")
+    old_feed, new_feed = feed_folders()
+    report_file = HERE / REPORT_FILE
+    csv_file = HERE / CSV_FILE
+
+    old_agency = load(old_feed, "agency.txt")
+    new_agency = load(new_feed, "agency.txt")
+    old_stops = load(old_feed, "stops.txt")
+    new_stops = load(new_feed, "stops.txt")
+    old_routes = load(old_feed, "routes.txt")
+    new_routes = load(new_feed, "routes.txt")
+    old_trips = load(old_feed, "trips.txt")
+    new_trips = load(new_feed, "trips.txt")
 
     missing_stops, added_stops = find_missing_and_new(old_stops, new_stops)
     renamed_stops = find_renamed_stops(old_stops, new_stops)
@@ -212,7 +230,7 @@ def main():
         old_routes, new_routes, old_trips, new_trips, TRIP_CHANGE_THRESHOLD_PCT
     )
 
-    report = format_header(old_agency, new_agency)
+    report = format_header(old_agency, new_agency, old_feed, new_feed)
 
     report += "\nDATA QUALITY\n"
     report += report_duplicates(old_stops, "stop_id", "old")
@@ -276,16 +294,15 @@ def main():
     ])
 
     print(report)
-    os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
-    with open(REPORT_FILE, "w", encoding="utf-8") as file:
+    os.makedirs(report_file.parent, exist_ok=True)
+    with open(report_file, "w", encoding="utf-8") as file:
         file.write(report)
-    csv_table.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")  # -sig so Excel shows accents correctly
-    print(f"Report saved to {REPORT_FILE} and {CSV_FILE}")
+    csv_table.to_csv(csv_file, index=False, encoding="utf-8-sig")  # -sig so Excel shows accents correctly
+    print(f"Report saved to {report_file} and {csv_file}")
 
 
 if __name__ == "__main__":
     main()
 
 # TODO: ??? flag missing+new pairs with the same name as possible ID changes
-# TODO: command line
 # TODO: limitations for README: different service time length, csv for changes only, txt contains data quality

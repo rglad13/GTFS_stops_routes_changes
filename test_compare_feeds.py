@@ -215,8 +215,8 @@ def test_header_warns_when_agencies_differ():
     same = pd.DataFrame({"agency_name": ["Grybas"]})
     other = pd.DataFrame({"agency_name": ["Baravykas"]})
 
-    assert "WARNING" not in format_header(old, same)
-    assert "WARNING" in format_header(old, other)
+    assert "WARNING" not in format_header(old, same, "old", "new")
+    assert "WARNING" in format_header(old, other, "old", "new")
 
 
 def test_report_duplicates_names_the_repeated_id():
